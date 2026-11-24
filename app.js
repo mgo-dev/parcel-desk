@@ -20,7 +20,7 @@
   const RES_FIELDS = "id, flat, name, email, created_at, approved_at";
 
   function show(id) {
-    for (const s of ["screen-setup", "screen-login", "screen-app"]) $("#" + s).hidden = s !== id;
+    for (const s of ["screen-setup", "screen-login", "screen-password", "screen-app"]) $("#" + s).hidden = s !== id;
   }
 
   function setupMessage(msg, signedIn = false) {
@@ -38,7 +38,14 @@
     setupMessage("Add your Supabase project URL and key to config.js, then upload it to GitHub again.");
     return;
   }
+  // Invite and password-reset emails bring people back here with details in the address.
+  // Read them before the Supabase library tidies the address up.
+  const linkInfo = new URLSearchParams(location.hash.slice(1));
+  const linkType = linkInfo.get("type"); // "invite" or "recovery"
+  const linkError = linkInfo.get("error_description") || linkInfo.get("error");
+
   const db = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+  const appUrl = location.origin + location.pathname;
 
   // ---------- Helpers ----------
   let toastTimer;
@@ -89,9 +96,88 @@
   // ---------- Auth ----------
   async function start() {
     const { data } = await db.auth.getSession();
+    if (linkError) {
+      history.replaceState(null, "", appUrl);
+      if (data.session) await db.auth.signOut({ scope: "local" });
+      showLogin("", "That link has expired or was already used. Ask for a new invitation, or use Forgot your password? below.");
+      return;
+    }
+    if (data.session && (linkType === "invite" || linkType === "recovery")) {
+      showPasswordScreen(linkType, data.session.user);
+      return;
+    }
     if (data.session) await enter(data.session.user);
-    else show("screen-login");
+    else showLogin();
   }
+
+  function showLogin(info = "", error = "") {
+    $("#login-info").textContent = info;
+    $("#login-info").hidden = !info;
+    $("#login-error").textContent = error;
+    $("#login-error").hidden = !error;
+    show("screen-login");
+  }
+
+  function showPasswordScreen(type, user) {
+    history.replaceState(null, "", appUrl);
+    S.passwordUser = user;
+    const invite = type === "invite";
+    $("#password-title").textContent = invite ? "Choose your password" : "Set a new password";
+    $("#password-intro").textContent = invite
+      ? `Welcome. Choose a password for ${user.email}. You'll use it to sign in to Parcel Desk, and only you will know it.`
+      : `Choose a new password for ${user.email}.`;
+    $("#password-username").value = user.email || "";
+    $("#password-error").hidden = true;
+    show("screen-password");
+    $("#new-password").focus();
+  }
+
+  $("#password-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const p1 = $("#new-password").value;
+    const p2 = $("#new-password-2").value;
+    const errEl = $("#password-error");
+    const problem =
+      p1.length < 12 ? "Use at least 12 characters." :
+      p1 !== p2 ? "The two passwords don't match. Type them again." : "";
+    if (problem) { errEl.textContent = problem; errEl.hidden = false; return; }
+    errEl.hidden = true;
+    const btn = $("#password-btn");
+    busy(btn, true, "Saving…");
+    const { data, error } = await db.auth.updateUser({ password: p1 });
+    busy(btn, false);
+    if (error) {
+      errEl.textContent = /different from the old/i.test(error.message)
+        ? "Choose a password you haven't used here before."
+        : /session|expired|jwt/i.test(error.message)
+          ? "This link has expired. Ask for a new invitation, or use Forgot your password? on the sign-in page."
+          : error.message;
+      errEl.hidden = false;
+      return;
+    }
+    $("#password-form").reset();
+    toast("Password saved.");
+    await enter(data.user || S.passwordUser);
+  });
+
+  $("#forgot-btn").addEventListener("click", async () => {
+    const email = $("#login-email").value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      showLogin("", "Type your email address above first, then tap Forgot your password? again.");
+      $("#login-email").focus();
+      return;
+    }
+    const btn = $("#forgot-btn");
+    busy(btn, true, "Sending…");
+    const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: appUrl });
+    busy(btn, false);
+    if (error && /rate|too many|seconds/i.test(error.message)) {
+      showLogin("", "A reset email was sent very recently. Wait a minute, then try again.");
+      return;
+    }
+    // Same message whether or not the email has a login, so nobody can check who has access.
+    showLogin(`If ${email} has a Parcel Desk login, we've sent it a link to set a new password. Check the spam folder too.`);
+  });
 
   async function enter(user) {
     S.user = user;
@@ -131,6 +217,7 @@
       return;
     }
     errEl.hidden = true;
+    $("#login-info").hidden = true;
     await enter(data.user);
   });
 
@@ -688,8 +775,11 @@
     if (document.visibilityState === "visible" && S.building) loadAll();
   }, 2 * 60 * 1000);
 
-  db.auth.onAuthStateChange((event) => {
+  db.auth.onAuthStateChange((event, session) => {
     if (event === "SIGNED_OUT" && S.user) location.reload();
+    if (event === "PASSWORD_RECOVERY" && session && $("#screen-password").hidden) {
+      setTimeout(() => showPasswordScreen("recovery", session.user), 0);
+    }
   });
 
   start();
