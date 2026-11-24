@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <title>Parcel Desk</title>
+  <meta name="theme-color" content="#1D2433">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Parcel Desk">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* App layout */
+    .topbar {
+      background: var(--bar); color: var(--bar-ink);
+      padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    }
+    .topbar-inner { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .topbar h1 { font-size: 1.15rem; display: flex; align-items: center; gap: 10px; }
+    .topbar h1::before { content: ""; width: 14px; height: 14px; background: var(--tape); border-radius: 3px; }
+    .topbar .btn-text { color: var(--bar-ink); font-weight: 600; }
+
+    .tabs {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      background: var(--surface); border-top: 1px solid var(--line);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tabs button {
+      background: none; border: none; color: var(--muted);
+      min-height: 62px; font-weight: 700; font-size: 0.95rem;
+      border-top: 4px solid transparent;
+    }
+    .tabs button[aria-selected="true"] { color: var(--ink); border-top-color: var(--tape); }
+    .tabs .count { display: inline-block; min-width: 22px; padding: 0 6px; margin-left: 4px; border-radius: 999px; background: var(--ink); color: var(--surface); font-size: 0.8rem; }
+
+    main.wrap { padding-bottom: 170px; }
+
+    .sendbar {
+      position: fixed; left: 0; right: 0; z-index: 25;
+      bottom: calc(62px + env(safe-area-inset-bottom));
+      background: var(--bar); color: var(--bar-ink);
+      padding: 10px 16px;
+    }
+    .sendbar-inner { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .sendbar .btn { min-height: 44px; white-space: nowrap; flex: none; }
+
+    @media (min-width: 760px) {
+      .tabs { position: sticky; top: 0; bottom: auto; border-top: none; border-bottom: 1px solid var(--line); padding: 0; grid-template-columns: repeat(3, 180px); justify-content: center; }
+      .tabs button { border-top: none; border-bottom: 4px solid transparent; }
+      .tabs button[aria-selected="true"] { border-bottom-color: var(--tape); }
+      .sendbar { bottom: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+      main.wrap { padding-bottom: 110px; }
+      .toast { bottom: calc(90px + env(safe-area-inset-bottom)); }
+    }
+
+    /* Flat suggestions */
+    .suggest { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .suggest button { background: var(--surface); border: 2px solid var(--line); border-radius: 6px; padding: 6px 12px; min-height: 42px; font-weight: 800; color: var(--ink); }
+    .suggest button small { font-weight: 600; color: var(--muted); margin-left: 6px; }
+
+    /* Lists */
+    .group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .group + .group { margin-top: 12px; }
+    .group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; }
+    .group-head .who { color: var(--ink-soft); font-size: 0.9rem; margin-top: 4px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+    .row .meta { font-size: 0.9rem; color: var(--ink-soft); }
+    .row .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+    .res-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+    .res-row:first-child { border-top: none; }
+    .res-row .email { color: var(--ink-soft); font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .res-row .btn { flex: none; min-height: 40px; padding: 0 12px; border-width: 1px; font-weight: 600; }
+    .res-flat { font-weight: 800; min-width: 3.5em; }
+
+    .empty { text-align: left; padding: 28px 18px; }
+    .tabs .count-alert { background: var(--tape); color: var(--tape-ink); }
+    .pending-panel { padding: 0; overflow: hidden; border: 2px solid var(--tape); }
+    .pending-head { padding: 16px 16px 12px; background: var(--tape-soft); display: grid; gap: 4px; }
+    .pending-row { flex-wrap: wrap; }
+    .pending-row > div:first-child { flex: 1 1 100%; }
+    .pending-row .email { white-space: normal; overflow-wrap: anywhere; }
+    .pending-row .meta { color: var(--muted); margin-top: 2px; }
+    .pending-actions { flex: 1 1 100%; padding-left: calc(3.5em + 14px); }
+    .pending-actions .btn { min-height: 44px; padding: 0 18px; }
+    .linkbox { display: flex; gap: 8px; align-items: center; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-wrap: anywhere; font-size: 0.9rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    details > summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+
+    /* Login */
+    .login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+    .login .panel { width: 100%; max-width: 420px; }
+    .login-mark { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .login-mark i { width: 40px; height: 40px; background: var(--tape); border: 2px solid var(--ink); border-radius: 6px; display: block; }
+
+    /* Poster */
+    .poster-wrap { position: fixed; inset: 0; background: var(--paper); z-index: 60; overflow: auto; }
+    .poster { max-width: 560px; margin: 0 auto; padding: 32px 24px; text-align: center; }
+    .poster .tape { height: 14px; background: var(--tape); border-radius: 3px; margin-bottom: 28px; }
+    .poster h2 { font-size: 2.2rem; font-weight: 800; margin-bottom: 14px; }
+    .poster .qr { background: #fff; padding: 16px; border-radius: 12px; width: 280px; max-width: 80vw; margin: 24px auto; }
+    .poster .qr svg, .poster .qr img { width: 100%; height: auto; display: block; }
+    .poster ol { text-align: left; max-width: 380px; margin: 0 auto; padding-left: 1.3em; font-size: 1.1rem; }
+    .poster ol li + li { margin-top: 6px; }
+    @media print {
+      body > *:not(.poster-wrap) { display: none !important; }
+      .poster-wrap { position: static; background: #fff; color: #1D2433; }
+      .no-print { display: none !important; }
+      .poster-wrap, .poster-wrap * { color: #1D2433 !important; }
+      .poster .tape { background: #F5C518 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Setup / error screen -->
+  <section id="screen-setup" class="login" hidden>
+    <div class="panel stack">
+      <h1>Almost there</h1>
+      <p id="setup-msg" class="soft"></p>
+      <button class="btn" type="button" id="setup-signout" hidden>Sign out</button>
+    </div>
+  </section>
+
+  <!-- Login -->
+  <section id="screen-login" class="login" hidden>
+    <form class="panel stack" id="login-form" novalidate>
+      <div class="login-mark"><i aria-hidden="true"></i><h1>Parcel Desk</h1></div>
+      <p class="soft">Sign in with your concierge account.</p>
+      <label class="field"><span>Email</span>
+        <input type="email" id="login-email" autocomplete="username" required>
+      </label>
+      <label class="field"><span>Password</span>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="note note-warn" role="alert" hidden></p>
+      <button class="btn btn-primary btn-block" type="submit" id="login-btn">Sign in</button>
+    </form>
+  </section>
+
+  <!-- Main app -->
+  <div id="screen-app" hidden>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <h1 id="building-name">Parcel Desk</h1>
+        <button class="btn-text" id="signout-btn" type="button">Sign out</button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tabbtn-log" aria-controls="tab-log" aria-selected="true" data-tab="log">Log parcel</button>
+      <button role="tab" id="tabbtn-waiting" aria-controls="tab-waiting" aria-selected="false" data-tab="waiting">Waiting<span class="count" id="waiting-count" hidden></span></button>
+      <button role="tab" id="tabbtn-residents" aria-controls="tab-residents" aria-selected="false" data-tab="residents">Residents<span class="count count-alert" id="pending-count" hidden></span></button>
+    </nav>
+
+    <main class="wrap">
+
+      <!-- LOG PARCEL -->
+      <section id="tab-log" role="tabpanel" aria-labelledby="tabbtn-log" class="stack">
+        <form id="log-form" class="panel stack" novalidate autocomplete="off">
+          <div>
+            <label for="flat-input" style="display:block;font-weight:700;margin-bottom:6px">Flat</label>
+            <div class="flat-input-wrap">
+              <input type="text" id="flat-input" class="flat-input" placeholder="Type the flat number" autocapitalize="characters" spellcheck="false" enterkeyhint="go" inputmode="text">
+            </div>
+          </div>
+          <div id="flat-hint" aria-live="polite"></div>
+
+          <div>
+            <p style="font-weight:700;margin-bottom:8px">Carrier <span class="muted" style="font-weight:400">(optional)</span></p>
+            <div class="chips" id="carrier-chips" data-group="carrier"></div>
+          </div>
+          <div>
+            <p style="font-weight:700;margin-bottom:8px">Size <span class="muted" style="font-weight:400">(optional)</span></p>
+            <div class="chips" id="size-chips" data-group="size"></div>
+          </div>
+          <label class="field"><span>Note <span class="muted" style="font-weight:400">(optional)</span></span>
+            <input type="text" id="note-input" maxlength="120" placeholder="e.g. addressed to Anna, keep cold">
+          </label>
+          <button class="btn btn-primary btn-block" type="submit" id="log-btn">Log parcel</button>
+        </form>
+
+        <div id="today-list"></div>
+      </section>
+
+      <!-- WAITING -->
+      <section id="tab-waiting" role="tabpanel" aria-labelledby="tabbtn-waiting" class="stack" hidden>
+        <input type="search" id="waiting-search" placeholder="Search by flat or collection code" aria-label="Search by flat or collection code">
+        <div id="remind-box"></div>
+        <div id="waiting-list"></div>
+      </section>
+
+      <!-- RESIDENTS -->
+      <section id="tab-residents" role="tabpanel" aria-labelledby="tabbtn-residents" class="stack" hidden>
+        <div class="panel pending-panel" id="pending-box" hidden></div>
+        <div class="panel stack">
+          <h2>Resident sign-up</h2>
+          <p class="soft">Residents add themselves using this link. They can't see anyone else's details, and they only get emails once you approve them.</p>
+          <div class="linkbox" id="signup-link"></div>
+          <div class="actions">
+            <button class="btn btn-small" type="button" id="copy-link-btn">Copy link</button>
+            <button class="btn btn-small" type="button" id="poster-btn">Show lobby poster</button>
+          </div>
+        </div>
+
+        <details class="panel">
+          <summary>Add a resident yourself</summary>
+          <form id="add-res-form" class="stack" style="margin-top:12px" novalidate>
+            <label class="field"><span>Full name</span><input type="text" id="res-name" autocomplete="off"></label>
+            <label class="field"><span>Flat</span><input type="text" id="res-flat" autocapitalize="characters" autocomplete="off"></label>
+            <label class="field"><span>Email</span><input type="email" id="res-email" autocomplete="off"></label>
+            <label class="check"><input type="checkbox" id="res-consent"><span>They've agreed to get parcel emails and for their details to be stored for this.</span></label>
+            <p id="res-error" class="note note-warn" role="alert" hidden></p>
+            <button class="btn btn-primary" type="submit" id="add-res-btn">Add resident</button>
+          </form>
+        </details>
+
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px">
+            <h2>Registered residents</h2>
+            <span class="muted small" id="res-count"></span>
+          </div>
+          <input type="search" id="res-search" placeholder="Search by name, flat or email" aria-label="Search residents">
+          <div id="res-list" class="group" style="margin-top:12px"></div>
+        </div>
+
+        <div class="panel stack">
+          <h2>Backups</h2>
+          <p class="soft">Download a copy every week and keep it somewhere private, not on GitHub.</p>
+          <div class="actions">
+            <button class="btn btn-small" type="button" id="export-res-btn">Download residents (CSV)</button>
+            <button class="btn btn-small" type="button" id="export-parcels-btn">Download parcel log (CSV)</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="sendbar" id="sendbar" hidden>
+      <div class="sendbar-inner">
+        <span id="sendbar-text"></span>
+        <button class="btn btn-primary" type="button" id="send-btn">Send emails</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby poster -->
+  <div class="poster-wrap" id="poster" hidden>
+    <div class="poster">
+      <div class="tape"></div>
+      <h2>Get an email when your parcel arrives</h2>
+      <p class="soft" id="poster-building" style="font-size:1.1rem"></p>
+      <div class="qr" id="poster-qr"></div>
+      <ol>
+        <li>Scan the code with your phone camera.</li>
+        <li>Enter your name, flat and email.</li>
+        <li>Once the concierge confirms your details, you'll get an email with a collection code whenever a parcel arrives.</li>
+      </ol>
+      <p class="muted small" id="poster-url" style="margin-top:20px;overflow-wrap:anywhere"></p>
+      <div class="actions no-print" style="justify-content:center;margin-top:28px">
+        <button class="btn btn-primary" type="button" id="print-btn">Print poster</button>
+        <button class="btn" type="button" id="close-poster-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="vendor/qrcode.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

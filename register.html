@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <title>Parcel emails sign-up</title>
+  <meta name="theme-color" content="#1D2433">
+  <link rel="icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .hero { background: var(--bar); color: var(--bar-ink); padding: calc(28px + env(safe-area-inset-top)) 16px 28px; }
+    .hero-inner { max-width: 520px; margin: 0 auto; }
+    .hero .label { display: inline-flex; align-items: stretch; border: 2px solid var(--bar-ink); border-radius: 6px; overflow: hidden; margin-bottom: 18px; font-weight: 800; }
+    .hero .label::before { content: ""; width: 10px; background: var(--tape); border-right: 2px solid var(--bar-ink); }
+    .hero .label span { padding: 6px 12px; }
+    .hero h1 { font-size: 2rem; }
+    .hero p { margin-top: 10px; color: var(--bar-ink); opacity: 0.85; }
+    .wrap { max-width: 520px; }
+    details > summary { cursor: pointer; font-weight: 700; padding: 10px 0; }
+    details p + p { margin-top: 10px; }
+    .done-mark { width: 56px; height: 56px; border-radius: 50%; background: var(--go); display: grid; place-items: center; color: #fff; font-size: 30px; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="label"><span id="building">Parcel emails</span></div>
+      <h1>Get an email when your parcel arrives</h1>
+      <p>Sign up once. Each time a parcel arrives for your flat, you'll get an email with a code to collect it from the concierge desk.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <p id="status" class="soft" aria-live="polite">Loading…</p>
+
+    <form id="form" class="panel stack" novalidate hidden>
+      <label class="field"><span>Full name</span>
+        <input type="text" id="name" autocomplete="name" maxlength="100" required>
+      </label>
+      <label class="field"><span>Flat number</span>
+        <input type="text" id="flat" autocapitalize="characters" autocomplete="off" maxlength="20" required>
+        <small>As it appears on your door, e.g. 12B</small>
+      </label>
+      <label class="field"><span>Email</span>
+        <input type="email" id="email" autocomplete="email" maxlength="200" required>
+      </label>
+
+      <details>
+        <summary>How your details are used</summary>
+        <div class="soft small">
+          <p>We store your name, flat number and email only to tell you when a parcel arrives. Only the concierge team at <span class="bname">your building</span> can see them, and they're never shared or used for marketing.</p>
+          <p>Records of collected parcels are deleted after 90 days. Your details are deleted when you move out or ask us to remove them.</p>
+          <p>To update or remove your details, contact <span id="contact">the concierge desk</span>.</p>
+        </div>
+      </details>
+
+      <label class="check">
+        <input type="checkbox" id="consent">
+        <span>I agree to receive parcel emails and for my details to be stored for this purpose.</span>
+      </label>
+
+      <p id="error" class="note note-warn" role="alert" hidden></p>
+      <button class="btn btn-primary btn-block" type="submit" id="submit">Sign up for parcel emails</button>
+    </form>
+
+    <section id="done" class="panel stack" hidden>
+      <div class="done-mark" aria-hidden="true">✓</div>
+      <h2>Thanks, you're nearly done</h2>
+      <p id="done-text" class="soft"></p>
+      <p class="soft small">Live with someone else? They can sign up with their own email for the same flat.</p>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="vendor/supabase.js"></script>
+  <script src="register.js"></script>
+</body>
+</html>
