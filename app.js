@@ -6,6 +6,10 @@
   const CARRIERS = ["Royal Mail", "Amazon", "Evri", "DPD", "DHL", "UPS", "Yodel", "Other"];
   const SIZES = ["Small", "Medium", "Large"];
   const REMIND_AFTER_DAYS = 3;
+  const REMIND_STOP_DAYS = 9;          // at most 2 reminders per parcel (day 3 and day 6)
+  const REMIND_HOURS = [9, 20];        // automatic reminders only between 9am and 8pm UK time
+  const AUTO_SEND_SECONDS = 30;   // wait after the last parcel, so Undo still works and a delivery round goes out together
+  const AUTO_SEND_MAX_WAIT = 120; // never hold emails longer than this while parcels keep coming in
   const DAY = 24 * 60 * 60 * 1000;
   const PARCEL_FIELDS = "id, flat, carrier, size, note, code, created_at, notified_at, reminded_at";
 
@@ -73,8 +77,9 @@
   const pending = () => S.parcels.filter((p) => !p.notified_at && hasEmail(p.flat));
   const remindDue = () => S.parcels.filter((p) => {
     const limit = REMIND_AFTER_DAYS * DAY;
+    const age = Date.now() - new Date(p.created_at);
     return p.notified_at && hasEmail(p.flat) &&
-      Date.now() - new Date(p.created_at) > limit &&
+      age > limit && age < REMIND_STOP_DAYS * DAY &&
       (!p.reminded_at || Date.now() - new Date(p.reminded_at) > limit);
   });
 
@@ -243,6 +248,21 @@
     rebuildResMap();
     S.parcels = p.data;
     renderAll();
+    if (pending().length && !auto.timer && !auto.sending && !auto.paused) scheduleAutoSend();
+    maybeAutoRemind();
+  }
+
+  // Automatic reminders: daytime only, and after a failure wait an hour before trying again
+  const remindState = { busy: false, retryAfter: 0 };
+  function ukHour() {
+    return Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Europe/London" }).format(new Date()));
+  }
+  function maybeAutoRemind() {
+    const h = ukHour();
+    if (!remindDue().length || remindState.busy || auto.sending) return;
+    if (h < REMIND_HOURS[0] || h >= REMIND_HOURS[1]) return;
+    if (Date.now() < remindState.retryAfter) return;
+    sendEmails("remind", null, true);
   }
 
   function renderAll() {
@@ -339,15 +359,19 @@
     $("#flat-input").value = "";
     $("#note-input").value = "";
     clearChips("size-chips"); // carrier stays selected: couriers often drop several at once
+    auto.paused = false;
+    scheduleAutoSend(true);
     renderAll();
     $("#flat-input").focus();
 
-    toast(`Logged for Flat ${data.flat}. Code ${data.code}.`, async () => {
+    const who = hasEmail(data.flat) ? " Email goes out shortly." : "";
+    toast(`Logged for Flat ${data.flat}. Code ${data.code}.${who}`, async () => {
       const { error: delErr } = await db.from("parcels").delete().eq("id", data.id);
       if (delErr) return toast(`Couldn't undo: ${delErr.message}`);
       S.parcels = S.parcels.filter((p) => p.id !== data.id);
+      if (!pending().length) cancelAutoSend();
       renderAll();
-      toast("Parcel removed.");
+      toast("Parcel removed. No email will be sent for it.");
     });
   });
 
@@ -386,8 +410,8 @@
     const due = remindDue();
     $("#remind-box").innerHTML = due.length
       ? `<div class="note note-info" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-           <span>${due.length} ${due.length === 1 ? "parcel has" : "parcels have"} been waiting ${REMIND_AFTER_DAYS} days or more.</span>
-           <button class="btn btn-small" type="button" data-action="remind">Send reminders</button>
+           <span>${due.length} ${due.length === 1 ? "parcel needs" : "parcels need"} a reminder. They go out automatically between 9am and 8pm.</span>
+           <button class="btn btn-small" type="button" data-action="remind">Send reminders now</button>
          </div>`
       : "";
 
@@ -458,34 +482,93 @@
     });
   }
 
-  // ---------- Emails ----------
+  // ---------- Emails (sent automatically) ----------
+  // After a parcel is logged, emails go out by themselves once nothing new
+  // has been logged for AUTO_SEND_SECONDS. "Send now" skips the wait.
+  const auto = { timer: null, tick: null, at: 0, first: 0, sending: false, paused: false };
+
+  function scheduleAutoSend(extend = false) {
+    if (!pending().length) return;
+    const now = Date.now();
+    if (!auto.first) auto.first = now;
+    let at = now + AUTO_SEND_SECONDS * 1000;
+    if (!extend && auto.at) at = Math.min(at, auto.at);
+    at = Math.min(at, auto.first + AUTO_SEND_MAX_WAIT * 1000);
+    auto.at = Math.max(at, now + 1000);
+    clearTimeout(auto.timer);
+    auto.timer = setTimeout(() => sendEmails("notify", $("#send-btn"), true), auto.at - now);
+    if (!auto.tick) auto.tick = setInterval(renderSendbar, 1000);
+    renderSendbar();
+  }
+
+  function cancelAutoSend() {
+    clearTimeout(auto.timer);
+    clearInterval(auto.tick);
+    Object.assign(auto, { timer: null, tick: null, at: 0, first: 0 });
+    renderSendbar();
+  }
+
   function renderSendbar() {
     const n = pending().length;
     $("#sendbar").hidden = n === 0;
-    $("#sendbar-text").textContent = `${n} not emailed yet`;
+    if (!n) return;
+    const what = `${n} ${n === 1 ? "parcel" : "parcels"}`;
+    if (auto.sending) {
+      $("#sendbar-text").textContent = `Emailing residents about ${what}…`;
+    } else if (auto.at) {
+      const secs = Math.max(0, Math.ceil((auto.at - Date.now()) / 1000));
+      $("#sendbar-text").textContent = `Emailing residents about ${what} in ${secs}s`;
+      $("#send-btn").textContent = "Send now";
+    } else {
+      $("#sendbar-text").textContent = `${what} not emailed yet`;
+      $("#send-btn").textContent = "Send emails";
+    }
   }
 
-  async function sendEmails(mode, btn) {
+  async function sendEmails(mode, btn, automatic = false) {
+    if (mode === "notify") {
+      if (auto.sending) return;
+      clearTimeout(auto.timer);
+      clearInterval(auto.tick);
+      Object.assign(auto, { timer: null, tick: null, at: 0, first: 0, sending: true });
+      renderSendbar();
+    }
+    if (mode === "remind") {
+      if (remindState.busy) return;
+      remindState.busy = true;
+    }
     busy(btn, true, "Sending…");
     const { data, error } = await db.functions.invoke("notify", { body: { mode } });
     busy(btn, false);
+    if (mode === "notify") auto.sending = false;
+    if (mode === "remind") {
+      remindState.busy = false;
+      remindState.retryAfter = error || data?.failedFlats?.length ? Date.now() + 60 * 60 * 1000 : 0;
+    }
     if (error) {
       let msg = error.message;
       try {
         const body = await error.context.json();
         if (body?.error) msg = body.error;
       } catch { /* keep generic message */ }
-      return toast(`Emails weren't sent. ${msg}`);
+      if (mode === "notify") { auto.paused = true; renderSendbar(); }
+      if (mode === "remind" && automatic) return; // quiet: it tries again in an hour, and the button is there
+      return toast(`Emails weren't sent. ${String(msg).trim().replace(/\.?$/, ".")} Tap Send emails to try again.`);
+    }
+    if (mode === "notify") {
+      auto.paused = false;
+      if (data.failedFlats?.length) auto.paused = true; // don't retry on a loop; the button stays
     }
     await loadAll();
+    const people = `${data.sent} ${data.sent === 1 ? "resident" : "residents"}`;
     let msg = data.sent
-      ? `Sent ${data.sent} ${data.sent === 1 ? "email" : "emails"}.`
-      : "Nothing to send.";
-    if (data.failedFlats?.length) msg += ` Couldn't email Flat ${data.failedFlats.join(", ")}. Try again shortly.`;
-    toast(msg);
+      ? (mode === "remind" ? `Sent a reminder to ${people} about waiting parcels.` : `Emailed ${people}.`)
+      : automatic ? "" : "Nothing to send.";
+    if (data.failedFlats?.length) msg += ` Couldn't email Flat ${data.failedFlats.join(", ")}. Tap Send emails to try again.`;
+    if (msg.trim()) toast(msg.trim());
   }
 
-  $("#send-btn").addEventListener("click", (e) => sendEmails("notify", e.currentTarget));
+  $("#send-btn").addEventListener("click", (e) => { auto.paused = false; sendEmails("notify", e.currentTarget); });
 
   // ---------- Residents ----------
   const signupUrl = () => new URL(`register.html?b=${encodeURIComponent(S.building.code)}`, location.href).href;
